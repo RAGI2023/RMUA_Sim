@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.0.2)
 project(basic_dev)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 ## Compile as C++11, supported in ROS Kinetic and newer
 # add_compile_options(-std=c++11)
 
@@ -41,7 +43,7 @@ catkin_package(
 include_directories(include ${catkin_INCLUDE_DIRS}  ${OpenCv_INCLUDE_DIRS})
 
 
-add_executable(basic_dev src/basic_dev.cpp )
+add_executable(basic_dev src/main.cpp src/basic_dev.cpp )
 target_link_libraries(basic_dev ${catkin_LIBRARIES} ${OpenCv_LIBS})
 
 install(DIRECTORY

@@ -3,15 +3,6 @@
 
 #include "basic_dev.hpp"
 
-int main(int argc, char** argv)
-{
-
-    ros::init(argc, argv, "basic_dev"); // 初始化ros 节点，命名为 basic
-    ros::NodeHandle n; // 创建node控制句柄
-    BasicDev go(&n);
-    return 0;
-}
-
 BasicDev::BasicDev(ros::NodeHandle *nh)
 {  
     //创建图像传输控制句柄
@@ -59,6 +50,7 @@ BasicDev::~BasicDev()
 {
 }
 
+// !debug用 日志输出位姿 roll pitch yaw X Y Z 
 void BasicDev::pose_cb(const geometry_msgs::PoseStamped::ConstPtr& msg)
 {
     Eigen::Quaterniond q(msg->pose.orientation.w, msg->pose.orientation.x, msg->pose.orientation.y, msg->pose.orientation.z);
@@ -67,6 +59,7 @@ void BasicDev::pose_cb(const geometry_msgs::PoseStamped::ConstPtr& msg)
         eulerAngle[0], eulerAngle[1], eulerAngle[2], msg->pose.position.x, msg->pose.position.y, msg->pose.position.z);
 }
 
+// 日志输出gps数据
 void BasicDev::gps_cb(const geometry_msgs::PoseStamped::ConstPtr& msg)
 {
     Eigen::Quaterniond q(msg->pose.orientation.w, msg->pose.orientation.x, msg->pose.orientation.y, msg->pose.orientation.z);
@@ -75,11 +68,13 @@ void BasicDev::gps_cb(const geometry_msgs::PoseStamped::ConstPtr& msg)
         eulerAngle[0], eulerAngle[1], eulerAngle[2], msg->pose.position.x, msg->pose.position.y, msg->pose.position.z);
 }
 
+// 日志输出获得imu数据
 void BasicDev::imu_cb(const sensor_msgs::Imu::ConstPtr& msg)
 {
     ROS_INFO("Get imu data. time: %f", msg->header.stamp.sec + msg->header.stamp.nsec*1e-9);
 }
 
+// 日志输出获得前视图像数据
 void BasicDev::front_left_view_cb(const sensor_msgs::ImageConstPtr& msg)
 {
     cv_front_left_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::TYPE_8UC3);
@@ -89,6 +84,7 @@ void BasicDev::front_left_view_cb(const sensor_msgs::ImageConstPtr& msg)
     }
 }
 
+// 日志输出获得前视图像数据
 void BasicDev::front_right_view_cb(const sensor_msgs::ImageConstPtr& msg)
 {
     cv_front_right_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::TYPE_8UC3);
@@ -98,6 +94,7 @@ void BasicDev::front_right_view_cb(const sensor_msgs::ImageConstPtr& msg)
     }
 }
 
+// 日志输出获得lidar数据
 void BasicDev::lidar_cb(const sensor_msgs::PointCloud2::ConstPtr& msg)
 {
     pcl::PointCloud<pcl::PointXYZ>::Ptr pts(new pcl::PointCloud<pcl::PointXYZ>);
