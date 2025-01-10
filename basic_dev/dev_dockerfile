@@ -1,0 +1,50 @@
+# 基础镜像：ROS Noetic Desktop Full
+FROM osrf/ros:noetic-desktop-full-focal
+
+# 设置环境变量
+# ENV DEBIAN_FRONTEND=noninteractive
+ENV LANG=C.UTF-8
+
+# 安装常用工具、Python 3、CUDA 依赖、PyTorch 和 YOLOv5 所需库
+RUN apt-get update && apt-get install -y \
+    python3-pip \
+    python3-dev \
+    python3-venv \
+    git \
+    wget \
+    build-essential \
+    cmake \
+    curl \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libfontconfig1 \
+    libice6 \
+    libxcb1 \
+    x11-utils \
+    && apt-get clean
+
+# 安装 NVIDIA Docker 支持
+RUN apt-get update && apt-get install -y \
+    nvidia-cuda-toolkit=11.8.* \
+    nvidia-container-toolkit \
+    && apt-get clean
+
+# 安装 PyTorch 与 CUDA 11.8 版本的 PyTorch
+RUN pip3 install torch==1.13.0+cu118 torchvision==0.14.0+cu118 torchaudio==0.13.0 \
+    -f https://download.pytorch.org/whl/cuda/11.8/torch_stable.html
+
+# 克隆 YOLOv5 并安装依赖
+RUN git clone https://github.com/ultralytics/yolov5.git /yolov5
+WORKDIR /yolov5
+RUN pip3 install -r requirements.txt
+
+# 设置环境变量以便运行 ROS 和 PyTorch 时使用
+ENV DISPLAY=:0
+RUN echo "source /opt/ros/noetic/setup.bash" >> ~/.bashrc
+RUN echo "source /yolov5/venv/bin/activate" >> ~/.bashrc
+
+# 设置默认工作目录
+WORKDIR /basic_dev
+CMD ["/bin/bash"]
