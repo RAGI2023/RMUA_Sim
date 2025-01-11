@@ -1,0 +1,12 @@
+<launch>
+    <node pkg="teleop_twist_keyboard" type="teleop_twist_keyboard.py" name="teleop_twist_keyboard" output="log">
+    </node>
+
+    <node pkg="basic_dev" type="keyboard_ctrl" name="keyboard_ctrl" output="screen">
+    </node>
+
+    <!-- Moving around:
+   u    i    o
+   j    k    l
+   m    ,    . -->
+</launch>
