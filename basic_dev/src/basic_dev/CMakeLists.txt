@@ -51,6 +51,9 @@ target_link_libraries(basic_dev ${catkin_LIBRARIES} ${OpenCv_LIBS})
 add_executable(depth_calculate src/depth_calculate.cpp)
 target_link_libraries(depth_calculate ${catkin_LIBRARIES} ${OpenCv_LIBS})
 
+add_executable(scene_packer src/scene_packer.cpp)
+target_link_libraries(scene_packer ${catkin_LIBRARIES} )
+
 install(DIRECTORY
   launch
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}

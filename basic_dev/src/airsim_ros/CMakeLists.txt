@@ -70,6 +70,7 @@ add_message_files(
   Environment.msg
   PoseCmd.msg
   RotorPWM.msg
+  Scene.msg
 )
 
 add_service_files(
@@ -88,6 +89,7 @@ generate_messages(
   std_msgs
   geometry_msgs
   geographic_msgs
+  sensor_msgs
 )
 
 ################################################
