@@ -372,3 +372,62 @@ void DepthGenerator::stereoRectification(const cv::Mat& cameraMatrix_l, const cv
     cv::remap(img_l, rectified_img_l, map1x, map1y, cv::INTER_LINEAR);
     cv::remap(img_r, rectified_img_r, map2x, map2y, cv::INTER_LINEAR);
 }
+
+double DepthGenerator::ContourSimilarity(const std::vector<cv::Point> &contour1, const std::vector<cv::Point> &contour2)
+{
+    // 面积 位置的权重
+    double area_weight = 0.5;
+    double position_weight = 0.5;
+
+    // 权重归一化
+    double weight_sum = area_weight + position_weight;
+    area_weight /= weight_sum;
+    position_weight /= weight_sum;
+
+    return area_weight * CalculateAreaSimilarity(contour1, contour2) + position_weight * CalculatePositionSimilarity(contour1, contour2);
+}
+
+std::vector<std::pair<int, int>> DepthGenerator::FindContourCorrespondence(
+    const std::vector<std::vector<cv::Point>>& contours1, 
+    const std::vector<std::vector<cv::Point>>& contours2) 
+{
+    int n1 = contours1.size();
+    int n2 = contours2.size();
+
+    // 创建一个相似度矩阵
+    std::vector<std::vector<double>> similarityMatrix(n1, std::vector<double>(n2));
+
+    // 填充相似度矩阵
+    for (int i = 0; i < n1; ++i) {
+        for (int j = 0; j < n2; ++j) {
+            similarityMatrix[i][j] = ContourSimilarity(contours1[i], contours2[j]);
+        }
+    }
+
+    // 存储最终的匹配结果
+    std::vector<std::pair<int, int>> correspondences;
+
+    // 简单的贪心算法：根据相似度选择最佳匹配
+    std::vector<bool> matched2(n2, false);  // 用于标记 contour2 中是否已匹配
+
+    for (int i = 0; i < n1; ++i) {
+        // 寻找与 contour1[i] 最相似的 contour2[j]
+        int bestMatchIndex = -1;
+        double bestSimilarity = -1.0;
+
+        for (int j = 0; j < n2; ++j) {
+            // 如果该轮廓尚未匹配，并且相似度较高
+            if (!matched2[j] && similarityMatrix[i][j] > bestSimilarity) {
+                bestMatchIndex = j;
+                bestSimilarity = similarityMatrix[i][j];
+            }
+        }
+
+        if (bestMatchIndex != -1) {
+            correspondences.push_back({i, bestMatchIndex});
+            matched2[bestMatchIndex] = true;  // 标记为已匹配
+        }
+    }
+
+    return correspondences;
+}

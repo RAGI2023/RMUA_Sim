@@ -141,6 +141,41 @@ private:
         return width / height;
     }
 
+    double ContourSimilarity(const std::vector<cv::Point> &contour1, const std::vector<cv::Point> &contour2);
+
+    // 计算轮廓质心
+    cv::Point2f CalculateCentroid(const std::vector<cv::Point> &contour)
+    {
+        cv::Moments mu = cv::moments(contour);
+        return cv::Point2f(mu.m10 / mu.m00, mu.m01 / mu.m00);
+    }
+
+    // 计算轮廓面积相似度
+    double CalculateAreaSimilarity(const std::vector<cv::Point> &contour1, const std::vector<cv::Point> &contour2)
+    {
+        double area1 = cv::contourArea(contour1);
+        double area2 = cv::contourArea(contour2);
+        return 1.0 - std::abs(area1 - area2) / std::max(area1, area2);
+    }
+
+    // 计算质心相似度
+    double CalculatePositionSimilarity(const cv::Point2f &centroid1, const cv::Point2f &centroid2) 
+    {
+        double dist = cv::norm(centroid1 - centroid2); // 计算质心之间的欧几里得距离
+        return 1.0 / (1.0 + dist); // 距离越小，相似度越高
+    }
+
+    // 计算质心相似度
+    double CalculatePositionSimilarity(const std::vector<cv::Point> &contour1, const std::vector<cv::Point> &contour2)
+    {
+        cv::Point2f centroid1 = CalculateCentroid(contour1);
+        cv::Point2f centroid2 = CalculateCentroid(contour2);
+        return CalculatePositionSimilarity(centroid1, centroid2);
+    }
+
+    std::vector<std::pair<int, int>> FindContourCorrespondence(
+    const std::vector<std::vector<cv::Point>>& contours1, 
+    const std::vector<std::vector<cv::Point>>& contours2);
 };
 
 class VideoPlayer
