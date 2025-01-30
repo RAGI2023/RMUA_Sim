@@ -3,6 +3,8 @@
 #include "ros/console.h"
 #include "ros/node_handle.h"
 #include <ctime>
+#include <exception>
+#include <memory>
 #include <opencv2/core/mat.hpp>
 #include <opencv2/core/persistence.hpp>
 #include <opencv2/core/types.hpp>
@@ -15,6 +17,12 @@
 #include "cv_bridge/cv_bridge.h"
 #include  "sensor_msgs/Imu.h"
 #include "airsim_ros/Scene.h"
+#include <message_filters/subscriber.h>
+#include <message_filters/synchronizer.h>
+#include <message_filters/sync_policies/approximate_time.h>
+#include <message_filters/sync_policies/exact_time.h>
+#include <message_filters/time_synchronizer.h>
+
 
 class CameraParameter
 {
@@ -64,65 +72,47 @@ class DepthGenerator
 {
 public:
     DepthGenerator(const std::string &right_topic, const std::string &left_topic, const std::string depth_topic, const CameraParameter &parameters) ;
-    DepthGenerator(const std::string &scene_topic, const CameraParameter &parameters) ;
-    ~DepthGenerator() {};
 
 private:
     ros::NodeHandle nh_;
     ros::Subscriber sub_left_, sub_right_, sub_imu_, sub_scene_;
     ros::Publisher pub_depth_;
-    std::string left_image_topic_, right_image_topic_,scene_topic_,  depth_topic_;
+    std::string left_image_topic_, right_image_topic_, depth_topic_;
     cv::Mat depth_image_;
     CameraParameter parameters_;
-    cv_bridge::CvImageConstPtr last_left_img_, last_right_img_;
     airsim_ros::Scene last_scene_;
-    double right_time_, left_time_;
+    std::unique_ptr<message_filters::Synchronizer<message_filters::sync_policies::ExactTime<sensor_msgs::Image, sensor_msgs::Image>>> sync_handler_ptr;
     double timestamp_;
+    message_filters::Subscriber<sensor_msgs::Image> fl_image_suber_, fr_image_suber_;
 
-    const double max_time_diff = 1e-4;
-
-    //处理image消息
-    void process_image();
-    //处理scene消息
-    void process_scene(); 
-    void callback_right(const sensor_msgs::ImageConstPtr &msg)
-    {
-        last_right_img_ = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::TYPE_8UC3);
-        right_time_ = get_currenttime(msg);
-        // right_time_ = timestamp_;
-        if(!last_right_img_->image.empty())
-        {
-            ROS_INFO("Get front right image.: %f", msg->header.stamp.sec + msg->header.stamp.nsec*1e-9);
-        }
-        process_image();
-    }
-    void callback_left(const sensor_msgs::ImageConstPtr &msg)
-    {
-        last_left_img_ = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::TYPE_8UC3);
-        left_time_ = get_currenttime(msg);
-        // left_time_ = timestamp_;
-        if(!last_left_img_->image.empty())
-        {
-            ROS_INFO("Get front left image.: %f", msg->header.stamp.sec + msg->header.stamp.nsec*1e-9);
-        }
-        process_image();
-    }
+    //处理场景
+    void process_scene(cv::Mat &left_image, cv::Mat &right_image); 
+    
     void callback_imu(const sensor_msgs::Imu::ConstPtr& msg)
     {
         timestamp_ = msg->header.stamp.toSec() + msg->header.stamp.toNSec() * 1e-9;
     }
 
-    void callback_scene(const airsim_ros::Scene::ConstPtr& msg)
+    void stereo_view_cb(const sensor_msgs::ImageConstPtr& fl_img_msg, const sensor_msgs::ImageConstPtr& fr_img_msg)
     {
-        last_scene_ = *msg;
-        ROS_INFO("Get scene: %f, %f", msg->left.header.stamp.sec + msg->left.header.stamp.nsec*1e-9, msg->right.header.stamp.sec + msg->right.header.stamp.nsec*1e-9);
-        process_scene();
+        ROS_INFO("Get stereo images");
+        try {
+            auto cv_ptrl = cv_bridge::toCvCopy(fl_img_msg, sensor_msgs::image_encodings::BGR8);
+            auto cv_ptrr = cv_bridge::toCvCopy(fr_img_msg, sensor_msgs::image_encodings::BGR8);
+            cv::Mat image_l  = cv_ptrl->image.clone();
+            cv::Mat image_r  = cv_ptrr->image.clone();
+            ROS_INFO("processing...");
+            process_scene(image_l, image_r);
+        } catch (std::exception &e) {
+            ROS_ERROR("Exception occurred while processing stereo images: %s", e.what());
+        }
     }
 
-    // 通过图像头获取时间戳
-    double get_currenttime(const sensor_msgs::ImageConstPtr &msg);
     // 通过imu头获取时间戳
-    double get_currenttime();
+    double get_currenttime_imu(const sensor_msgs::Imu::ConstPtr &msg)
+    {
+        return msg->header.stamp.toSec() + msg->header.stamp.toNSec() * 1e-9;
+    }
 
     void stereoRectification(const cv::Mat& cameraMatrix_l, const cv::Mat& distCoeffs_l,
                          const cv::Mat& cameraMatrix_r, const cv::Mat& distCoeffs_r,
@@ -176,6 +166,12 @@ private:
     std::vector<std::pair<int, int>> FindContourCorrespondence(
     const std::vector<std::vector<cv::Point>>& contours1, 
     const std::vector<std::vector<cv::Point>>& contours2);
+
+    void DrawCountourID(cv::Mat &image, const std::vector<cv::Point> &contour, int ID, double fontscale = 1.0, cv::Scalar color = cv::Scalar(255, 0, 0), double thickness = 2)
+    {
+        cv::putText(image, std::to_string(ID), CalculateCentroid(contour), cv::FONT_HERSHEY_SIMPLEX, 
+            fontscale, color,  thickness);
+    }
 };
 
 class VideoPlayer

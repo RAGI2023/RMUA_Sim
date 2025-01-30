@@ -8,8 +8,10 @@ int main(int argc, char** argv)
     g_triggerport_client = n.serviceClient<airsim_ros::TriggerPort>("/airsim_node/drone_1/trigger_port");
     g_takeoff_client = n.serviceClient<airsim_ros::Takeoff>("/airsim_node/drone_1/takeoff");
     g_pwm_publisher = n.advertise<airsim_ros::RotorPWM>("/airsim_node/drone_1/rotor_pwm_cmd", 1);
+    // 订阅无人机的位置信息 ESKF算法提供
     ros::Subscriber odom_suber = n.subscribe<nav_msgs::Odometry>("/eskf_odom", 1, odom_cb);
     // ros::Subscriber gt_suber = n.subscribe<geometry_msgs::PoseStamped>("/airsim_node/drone_1/debug/pose_gt", 1, gt_cb);
+    // 获取终点起点信息
     ros::Subscriber init_pose_suber = n.subscribe<geometry_msgs::PoseStamped>("/airsim_node/initial_pose", 1, init_pose_cb);
     ros::Subscriber end_pose_suber = n.subscribe<geometry_msgs::PoseStamped>("/airsim_node/end_goal", 1, end_position_cb);
     ros::Timer timer = n.createTimer(ros::Duration(1.0), timeCB);

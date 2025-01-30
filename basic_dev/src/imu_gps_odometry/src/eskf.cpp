@@ -4,6 +4,7 @@ ErrorStateKalmanFilter::ErrorStateKalmanFilter(double gravity, double pos_noise,
     double gyr_bias_noise, double acc_bias_noise, double pos_std, double ori_std,
     double gyr_noise, double acc_noise)
 {
+    //初始化重力加速度
     m_g = Eigen::Vector3d(0.0, 0.0, gravity);
     m_P.block<3, 3>(INDEX_STATE_POSI, INDEX_STATE_POSI) = Eigen::Matrix3d::Identity() * pos_noise * pos_noise;
     m_P.block<3, 3>(INDEX_STATE_VEL, INDEX_STATE_VEL) = Eigen::Matrix3d::Identity() * vel_noise * vel_noise;
