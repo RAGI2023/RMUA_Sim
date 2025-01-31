@@ -1,5 +1,6 @@
 #include "depth_calculate.hpp"
 #include "sensor_msgs/Image.h"
+#include <cmath>
 #include <functional>
 #include <opencv2/calib3d.hpp>
 #include <opencv2/core.hpp>
@@ -12,6 +13,7 @@
 #include <opencv2/imgproc.hpp>
 #include <opencv4/opencv2/core/mat.hpp>
 #include <string>
+#include <utility>
 #include <vector>
 
 int main(int argc, char **argv)
@@ -72,31 +74,13 @@ void DepthGenerator::process_scene(cv::Mat &left_image, cv::Mat &right_image)
     ExtractOrangeMask(rectified_right, orange_right);
 
     // 去除噪点 闭操作
-    // cv::Mat closed_rihgt, closed_left;
     cv::Mat kernal = cv::Mat::ones(3, 3, CV_8U);
     cv::morphologyEx(orange_left, orange_left, cv::MORPH_CLOSE, kernal);
     cv::morphologyEx(orange_right, orange_right, cv::MORPH_CLOSE, kernal);
 
-    // // 寻找特征点
-    // cv::Ptr<cv::ORB> orb = cv::ORB::create();
-    // std::vector<cv::KeyPoint> keypoints_left, keypoints_right;
-    // cv::Mat descriptors_left, descriptors_right;
-    // orb->detectAndCompute(orange_left, cv::noArray(), keypoints_left, descriptors_left);
-    // orb->detectAndCompute(orange_right, cv::noArray(), keypoints_right, descriptors_right);
-    // // 匹配特征点
-    // cv::Ptr<cv::BFMatcher> bf = cv::BFMatcher::create(cv::NORM_HAMMING, true);
-    // std::vector<cv::DMatch> matches;
-    // bf->match(descriptors_left, descriptors_right, matches);
-
-    // // 画出匹配点
-    // cv::Mat img_matches;
-    // cv::drawMatches(orange_left, keypoints_left, orange_right, keypoints_right, matches, img_matches, 
-    //             cv::Scalar::all(-1), cv::Scalar::all(-1), 
-    //             std::vector<char>(), cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
-    // cv::imshow("Matches", img_matches);
-    // if (cv::waitKey(10) == 's'){
-    //     cv::imwrite("test.jpg", img_matches);
-    // }
+    cv::Mat kernerl_erose = cv::Mat::ones(3, 3, CV_8U);
+    cv::erode(orange_left, orange_left, kernerl_erose);
+    cv::erode(orange_right, orange_right, kernerl_erose);
 
     // 提取直线， 赛道框
     // ROS_INFO("Lines detecting...");
@@ -112,88 +96,99 @@ void DepthGenerator::process_scene(cv::Mat &left_image, cv::Mat &right_image)
     cv::HoughLinesP(edges_left, lines_left, rho, theta, hf_threshold, minLineLength, maxLineGap); 
     cv::HoughLinesP(edges_right, lines_right, rho, theta, hf_threshold, minLineLength, maxLineGap);
 
+    // 膨胀，避免轮廓不闭合
+    // cv::Mat kernel = cv::Mat::ones(4, 4, CV_8U);
+    // cv::dilate(edges_left, edges_left, kernel);
+    // cv::dilate(edges_right, edges_right, kernel);
+
     std::vector<std::vector<cv::Point>> contours_left, contours_right;
     cv::findContours(edges_left, contours_left, cv::RETR_LIST, cv::CHAIN_APPROX_SIMPLE);
     cv::findContours(edges_right, contours_right, cv::RETR_LIST, cv::CHAIN_APPROX_SIMPLE);
+
+    // 轮廓近似
+    std::vector<std::vector<cv::Point>> approxContours_left(contours_left.size());
+    std::vector<std::vector<cv::Point>> approxContours_right(contours_right.size());
+    const static double epsilon = 3; // 近似精度，值越小越接近原始轮廓
+    for (size_t i = 0; i < contours_left.size(); i++) {
+        cv::approxPolyDP(contours_left[i], approxContours_left[i], epsilon, true);
+    }
+    for (size_t i = 0; i < contours_right.size(); i++) {
+        cv::approxPolyDP(contours_right[i], approxContours_right[i], epsilon, true);
+    }
+    contours_left = approxContours_left;
+    contours_right = approxContours_right;
+    
+
+    // 滤除过小的轮廓 瘦长 竖直的矩形
+    std::vector<std::vector<cv::Point>> barrriers_left, barriers_right;
+    static const double ratio_thresh = 1;
+    static const double area_thresh = 200;
+    static const double area_ratio_thresh = 0.5;
+    for (const auto &contour : contours_left){
+        double area = cv::contourArea(contour);
+        cv::Rect rect = cv::boundingRect(contour);
+        if(area > area_thresh && CalculateAspectRatio(rect) < ratio_thresh/*  && area / rect.area() > area_ratio_thresh */){
+            barrriers_left.push_back(contour);
+        }
+    }
+    for (const auto &contour : contours_right){
+        // if(cv::contourArea(contour) > area_thresh && CalculateAspectRatio(cv::boundingRect(contour)) < ratio_thresh){
+        //     barriers_right.push_back(contour);
+        // }
+        double area = cv::contourArea(contour);
+        cv::Rect rect = cv::boundingRect(contour);
+        if(area > area_thresh && CalculateAspectRatio(rect) < ratio_thresh/*  && area / rect.area() > area_ratio_thresh */){
+            barriers_right.push_back(contour);
+        }
+    }
 
     // 显示轮廓，调试用
     cv::Mat orange_left_color, orange_right_color;
     cv::cvtColor(orange_left, orange_left_color, cv::COLOR_GRAY2BGR);
     cv::cvtColor(orange_right, orange_right_color, cv::COLOR_GRAY2BGR);
-    cv::drawContours(orange_right_color, contours_right, -1, cv::Scalar(0, 255, 0), 2);
-
-    // 滤除过小的轮廓
-    std::vector<std::vector<cv::Point>> barrrier_left, barriers_right;
-    double ratio_thresh = 8;
-    double area_thresh = 200;
-    for (const auto &contour : contours_left){
-        if(cv::contourArea(contour) > area_thresh && CalculateAspectRatio(contour) < ratio_thresh){
-            barrrier_left.push_back(contour);
-        }
-        // else { //显示过滤掉的轮廓的数据
-        //     double area = cv::contourArea(contour);
-        //     double ratio = CalculateAspectRatio(contour);
-        //     cv::Moments m = cv::moments(contour);
-        //     cv::Point center(m.m10 / m.m00, m.m01 / m.m00);
-        //     std::ostringstream areaStream;
-        //     areaStream << std::fixed << std::setprecision(2) << area; // 控制小数点后 2 位
-        //     std::ostringstream ratioStream;
-        //     ratioStream << std::fixed << std::setprecision(2) << ratio; // 控制小数点后 2 位
-        //     if (ratio > ratio_thresh){
-        //         cv::drawContours(orange_left_color, std::vector<std::vector<cv::Point>> {contour}, -1, cv::Scalar(255, 0, 0), 2);
-        //         cv::putText(orange_left_color, ratioStream.str(), center,cv::FONT_HERSHEY_SIMPLEX, 0.3, cv::Scalar(255, 0, 0), 1);
-        //     }else{
-        //         cv::drawContours(orange_left_color, std::vector<std::vector<cv::Point>> {contour}, -1, cv::Scalar(0, 0, 255), 2);
-        //         cv::putText(orange_left_color, areaStream.str(), center,cv::FONT_HERSHEY_SIMPLEX, 0.3, cv::Scalar(0, 0, 255), 1);
-        //     }
-        // }
+    cv::drawContours(orange_left_color, barrriers_left, -1, cv::Scalar(0, 255, 0), 2);
+    cv::drawContours(orange_right_color, barriers_right, -1, cv::Scalar(0, 255, 0), 2);
+    for(const auto &contour : contours_left){
+        // DrawRotatedRect(orange_left_color, contour);
+        DrawRect(orange_left_color, contour);
     }
-    for (const auto &contour : contours_right){
-        if(cv::contourArea(contour) > area_thresh && CalculateAspectRatio(contour) < ratio_thresh){
-            barriers_right.push_back(contour);
-        }
-    }
-
     // 画出直线
     cv::Mat line_img_left = cv::Mat::zeros(orange_left.size(), CV_8UC3);
     cv::Mat line_img_right = cv::Mat::zeros(orange_right.size(), CV_8UC3);
-    for (size_t i = 0; i < lines_left.size(); i++){
-        cv::Vec4f l = lines_left[i];
-        cv::line(line_img_left, cv::Point(l[0], l[1]), cv::Point(l[2], l[3]), cv::Scalar(0, 0, 255), 3, cv::LINE_AA);
-    }
-    for (size_t i = 0; i < lines_right.size(); i++){
-        cv::Vec4f l = lines_right[i];
-        cv::line(line_img_right, cv::Point(l[0], l[1]), cv::Point(l[2], l[3]), cv::Scalar(0, 0, 255), 3, cv::LINE_AA);
-    }
+    // for (size_t i = 0; i < lines_left.size(); i++){
+    //     cv::Vec4f l = lines_left[i];
+    //     cv::line(line_img_left, cv::Point(l[0], l[1]), cv::Point(l[2], l[3]), cv::Scalar(0, 0, 255), 3, cv::LINE_AA);
+    // }
+    // for (size_t i = 0; i < lines_right.size(); i++){
+    //     cv::Vec4f l = lines_right[i];
+    //     cv::line(line_img_right, cv::Point(l[0], l[1]), cv::Point(l[2], l[3]), cv::Scalar(0, 0, 255), 3, cv::LINE_AA);
+    // }
     // 画出轮廓
-    for(const auto &contour : barrrier_left){
+    for(const auto &contour : barrriers_left){
         cv::drawContours(line_img_left, std::vector<std::vector<cv::Point>>{contour}, -1, cv::Scalar(0, 255, 0), 2);
-        DrawCountourID(line_img_left, contour, &contour - &barrrier_left[0]);
-        // // 在质心位置标注面积
-        // cv::Moments m = cv::moments(contour);
-        // cv::Point center(m.m10 / m.m00, m.m01 / m.m00);
-        // double area = cv::contourArea(contour);
-        // std::string areaText = std::to_string(static_cast<int>(area));
-        // cv::putText(line_img_left, areaText, center, cv::FONT_HERSHEY_SIMPLEX, 0.3, cv::Scalar(255, 255, 255), 1);
     }
     for(const auto &contour : barriers_right){
         cv::drawContours(line_img_right, std::vector<std::vector<cv::Point>>{contour}, -1, cv::Scalar(0, 255, 0), 2);
-        
-        // // 在质心位置标注面积
-        // cv::Moments m = cv::moments(contour);
-        // cv::Point center(m.m10 / m.m00, m.m01 / m.m00);
-        // double area = cv::contourArea(contour);
-        // std::string areaText = std::to_string(static_cast<int>(area));
-        // cv::putText(line_img_right, areaText, center, cv::FONT_HERSHEY_SIMPLEX, 0.3, cv::Scalar(255, 255, 255), 1);
     }
-
-    cv::Mat combined_canny;
-    cv::hconcat(line_img_left, line_img_right, combined_canny);
-    cv::imshow("canny", combined_canny);
-
-
+    
     cv::Mat combined_img;
     cv::hconcat(orange_left_color, orange_right_color, combined_img);
+    std::vector<cv::Point2f> left_points, right_points;
+    for (const auto &contour : barrriers_left){
+        cv::Point2f centroid = CalculateCentroid(contour);
+        left_points.push_back(centroid);
+    }
+    for (const auto &contour : barriers_right){
+        cv::Point2f centroid = CalculateCentroid(contour);
+        right_points.push_back(centroid);
+    }
+    std::vector<std::pair<int , int >> correspondences = FindContourCorrespondence(barrriers_left, barriers_right);
+    for (const auto &correspondence : correspondences){
+        cv::Point2f right_tmp = right_points[correspondence.second];
+        right_tmp.x += line_img_left.cols;
+        cv::line(combined_img, left_points[correspondence.first], right_tmp, cv::Scalar(0, 0, 255), 1);
+    }
+    
     cv::imshow("rectified", combined_img);
     cv::waitKey(10);
 
@@ -244,7 +239,7 @@ double DepthGenerator::ContourSimilarity(const std::vector<cv::Point> &contour1,
 {
     // 面积 位置的权重
     double area_weight = 0.5;
-    double position_weight = 0.5;
+    double position_weight = 0.7;
 
     // 权重归一化
     double weight_sum = area_weight + position_weight;
@@ -254,10 +249,26 @@ double DepthGenerator::ContourSimilarity(const std::vector<cv::Point> &contour1,
     return area_weight * CalculateAreaSimilarity(contour1, contour2) + position_weight * CalculatePositionSimilarity(contour1, contour2);
 }
 
+double DepthGenerator::ContourSimilarity(const cv::Rect &rect1, const cv::Rect &rect2)
+{
+    // 面积 位置的权重
+    double area_weight = 0.5;
+    double position_weight = 0.7;
+
+    // 权重归一化
+    double weight_sum = area_weight + position_weight;
+    area_weight /= weight_sum;
+    position_weight /= weight_sum;
+
+    return area_weight * CalculateAreaSimilarity(rect1, rect2) + position_weight * CalculatePositionSimilarity(rect1, rect2);
+}
+
 std::vector<std::pair<int, int>> DepthGenerator::FindContourCorrespondence(
     const std::vector<std::vector<cv::Point>>& contours1, 
     const std::vector<std::vector<cv::Point>>& contours2) 
 {
+    static const int Y_THRESH = 20;
+    static const int INF = -2;
     int n1 = contours1.size();
     int n2 = contours2.size();
 
@@ -267,6 +278,10 @@ std::vector<std::pair<int, int>> DepthGenerator::FindContourCorrespondence(
     // 填充相似度矩阵
     for (int i = 0; i < n1; ++i) {
         for (int j = 0; j < n2; ++j) {
+            if (std::fabs(CalculateCentroid(contours1[i]).y - CalculateCentroid(contours2[j]).y) > Y_THRESH) {
+                similarityMatrix[i][j] = INF;
+                continue;
+            }
             similarityMatrix[i][j] = ContourSimilarity(contours1[i], contours2[j]);
         }
     }
@@ -284,7 +299,7 @@ std::vector<std::pair<int, int>> DepthGenerator::FindContourCorrespondence(
 
         for (int j = 0; j < n2; ++j) {
             // 如果该轮廓尚未匹配，并且相似度较高
-            if (!matched2[j] && similarityMatrix[i][j] > bestSimilarity) {
+            if (!matched2[j] && similarityMatrix[i][j] != INF && similarityMatrix[i][j] > bestSimilarity) {
                 bestMatchIndex = j;
                 bestSimilarity = similarityMatrix[i][j];
             }

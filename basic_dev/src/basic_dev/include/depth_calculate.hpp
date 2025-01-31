@@ -123,15 +123,44 @@ private:
     void ExtractOrangeMask(cv::Mat &img, cv::Mat &mask);
     void ExtractOrange(cv::Mat &img, cv::Mat &Output);
 
+    // 计算轮廓的长宽比 高/宽
     double CalculateAspectRatio(const std::vector<cv::Point> &countour)
     {
         cv::RotatedRect minRect = cv::minAreaRect(countour);
-        double width = minRect.size.width > minRect.size.height ? minRect.size.width : minRect.size.height;
-        double height = minRect.size.width < minRect.size.height ? minRect.size.width : minRect.size.height;
-        return width / height;
+        // double width = minRect.size.width > minRect.size.height ? minRect.size.width : minRect.size.height;
+        // double height = minRect.size.width < minRect.size.height ? minRect.size.width : minRect.size.height;
+        return minRect.size.height / minRect.size.width;
+        // return height / width;
+    }
+
+    double CalculateAspectRatio(const cv::RotatedRect &rect)
+    {
+        return rect.size.height / rect.size.width;
+    }
+
+    double CalculateAspectRatio(const cv::Rect &rect)
+    {
+        return static_cast<double>(rect.height) / rect.width;
+    }
+
+    void DrawRotatedRect(cv::Mat &image, const std::vector<cv::Point> &contour, cv::Scalar color = cv::Scalar(255, 0, 0), int thickness = 2)
+    {
+        cv::RotatedRect minRect = cv::minAreaRect(contour);
+        cv::Point2f vertices[4];
+        minRect.points(vertices);
+        for (int i = 0; i < 4; i++){
+            cv::line(image, vertices[i], vertices[(i + 1) % 4], color, thickness);
+        }
+    }
+
+    void DrawRect(cv::Mat &image, const std::vector<cv::Point> &contour, cv::Scalar color = cv::Scalar(255, 0, 0), int thickness = 2)
+    {
+        cv::Rect rect = cv::boundingRect(contour);
+        cv::rectangle(image, rect, color, thickness);
     }
 
     double ContourSimilarity(const std::vector<cv::Point> &contour1, const std::vector<cv::Point> &contour2);
+    double ContourSimilarity(const cv::Rect &rect1, const cv::Rect &rect2);
 
     // 计算轮廓质心
     cv::Point2f CalculateCentroid(const std::vector<cv::Point> &contour)
@@ -148,10 +177,21 @@ private:
         return 1.0 - std::abs(area1 - area2) / std::max(area1, area2);
     }
 
+    double CalculateAreaSimilarity(const cv::Rect &rect1, const cv::Rect &rect2)
+    {
+        double area1 = rect1.area();
+        double area2 = rect2.area();
+        return 1.0 - std::abs(area1 - area2) / std::max(area1, area2);
+    }
+
     // 计算质心相似度
     double CalculatePositionSimilarity(const cv::Point2f &centroid1, const cv::Point2f &centroid2) 
     {
-        double dist = cv::norm(centroid1 - centroid2); // 计算质心之间的欧几里得距离
+        double dist;
+        // dist = cv::norm(centroid1 - centroid2); // 计算质心之间的欧几里得距离
+        const static float xWeight = 0.2;
+        const static float yWeight = 0.8;
+        dist = xWeight * std::abs(centroid1.x - centroid2.x) + yWeight * std::abs(centroid1.y - centroid2.y);
         return 1.0 / (1.0 + dist); // 距离越小，相似度越高
     }
 
@@ -160,6 +200,17 @@ private:
     {
         cv::Point2f centroid1 = CalculateCentroid(contour1);
         cv::Point2f centroid2 = CalculateCentroid(contour2);
+        return CalculatePositionSimilarity(centroid1, centroid2);
+    }
+
+    double CalculatePositionSimilarity(const cv::Rect &rect1, const cv::Rect &rect2) 
+    {
+        cv::Point2f centroid1 = rect1.tl();
+        centroid1.x += 0.5 * rect1.width;
+        centroid1.y += 0.5 * rect1.height;
+        cv::Point2f centroid2 = rect2.tl();
+        centroid2.x += 0.5 * rect2.width;
+        centroid2.y += 0.5 * rect2.height;
         return CalculatePositionSimilarity(centroid1, centroid2);
     }
 
