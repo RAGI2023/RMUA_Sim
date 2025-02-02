@@ -153,6 +153,21 @@ private:
         }
     }
 
+    bool BarrierFileter(const std::vector<cv::Point> &contour)
+    {
+        static const double ratio_thresh = 2.5;
+        static const double area_thresh = 50;
+        static const double area_ratio_thresh = 0.5;
+        cv::Rect rect = cv::boundingRect(contour);
+        std::vector<cv::Point> hull;
+        cv::convexHull(contour, hull);
+        double hull_area = cv::contourArea(hull);
+        if (rect.area() > area_thresh && CalculateAspectRatio(rect) < ratio_thresh){
+            return true;
+        }
+        return false;
+    }
+
     void DrawRect(cv::Mat &image, const std::vector<cv::Point> &contour, cv::Scalar color = cv::Scalar(255, 0, 0), int thickness = 2)
     {
         cv::Rect rect = cv::boundingRect(contour);

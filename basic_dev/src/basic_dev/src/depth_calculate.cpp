@@ -100,10 +100,36 @@ void DepthGenerator::process_scene(cv::Mat &left_image, cv::Mat &right_image)
     // cv::Mat kernel = cv::Mat::ones(4, 4, CV_8U);
     // cv::dilate(edges_left, edges_left, kernel);
     // cv::dilate(edges_right, edges_right, kernel);
-
+    
+    cv::Mat orange_left_color, orange_right_color;
+    cv::cvtColor(orange_left, orange_left_color, cv::COLOR_GRAY2BGR);
+    cv::cvtColor(orange_right, orange_right_color, cv::COLOR_GRAY2BGR);
+    
     std::vector<std::vector<cv::Point>> contours_left, contours_right;
-    cv::findContours(edges_left, contours_left, cv::RETR_LIST, cv::CHAIN_APPROX_SIMPLE);
-    cv::findContours(edges_right, contours_right, cv::RETR_LIST, cv::CHAIN_APPROX_SIMPLE);
+    std::vector<cv::Rect> rects_left, rects_right;
+    std::vector<std::vector<cv::Point>> contours_hierarchy_left, contours_hierarchy_right;
+    std::vector<cv::Vec4i> hierarchy_left, hierarchy_right;
+    cv::findContours(edges_left, contours_hierarchy_left, hierarchy_left, cv::RETR_TREE, cv::CHAIN_APPROX_SIMPLE);
+    cv::findContours(edges_right, contours_hierarchy_right, hierarchy_right, cv::RETR_TREE, cv::CHAIN_APPROX_SIMPLE);
+    // cv::findContours(edges_left, contours_left, cv::RETR_LIST, cv::CHAIN_APPROX_SIMPLE);
+    // cv::findContours(edges_right, contours_right, cv::RETR_LIST, cv::CHAIN_APPROX_SIMPLE);
+
+    for (size_t i = 0; i < contours_hierarchy_left.size(); i++) {
+        if (hierarchy_left[i][3] == -1) { // 没有父轮廓，是最外层轮廓
+            // 处理最外层轮廓
+            // cv::drawContours(image, contours, i, cv::Scalar(0, 255, 0), 2); // 绘制轮廓
+            // std::cout << "Contour " << i << " is an outer contour." << std::endl;
+            contours_left.push_back(contours_hierarchy_left[i]);
+        }
+    }
+    for (size_t i = 0; i < contours_hierarchy_right.size(); i++) {
+        if (hierarchy_right[i][3] == -1) { // 没有父轮廓，是最外层轮廓
+            // 处理最外层轮廓
+            // cv::drawContours(image, contours, i, cv::Scalar(0, 255, 0), 2); // 绘制轮廓
+            // std::cout << "Contour " << i << " is an outer contour." << std::endl;
+            contours_right.push_back(contours_hierarchy_right[i]);
+        }
+    }
 
     // 轮廓近似
     std::vector<std::vector<cv::Point>> approxContours_left(contours_left.size());
@@ -121,36 +147,56 @@ void DepthGenerator::process_scene(cv::Mat &left_image, cv::Mat &right_image)
 
     // 滤除过小的轮廓 瘦长 竖直的矩形
     std::vector<std::vector<cv::Point>> barrriers_left, barriers_right;
-    static const double ratio_thresh = 1;
-    static const double area_thresh = 200;
-    static const double area_ratio_thresh = 0.5;
+    // static const double ratio_thresh = 2;
+    // static const double area_thresh = 100;
+    // static const double area_ratio_thresh = 0.5;
     for (const auto &contour : contours_left){
-        double area = cv::contourArea(contour);
-        cv::Rect rect = cv::boundingRect(contour);
-        if(area > area_thresh && CalculateAspectRatio(rect) < ratio_thresh/*  && area / rect.area() > area_ratio_thresh */){
+        // if(rect.area() > area_thresh && CalculateAspectRatio(rect) < ratio_thresh){
+        //     barrriers_left.push_back(contour);
+        //     rects_left.push_back(rect);
+        // }
+
+        if (BarrierFileter(contour)){
             barrriers_left.push_back(contour);
+            rects_left.push_back(cv::boundingRect(contour));
         }
+
+        // if(cv::contourArea(contour) > area_thresh && CalculateAspectRatio(cv::boundingRect(contour)) < ratio_thresh){
+        //     barrriers_left.push_back(contour);
+        //     rects_left.push_back(cv::boundingRect(contour));
+        // }
     }
     for (const auto &contour : contours_right){
         // if(cv::contourArea(contour) > area_thresh && CalculateAspectRatio(cv::boundingRect(contour)) < ratio_thresh){
         //     barriers_right.push_back(contour);
+        //     rects_right.push_back(cv::boundingRect(contour));
         // }
-        double area = cv::contourArea(contour);
-        cv::Rect rect = cv::boundingRect(contour);
-        if(area > area_thresh && CalculateAspectRatio(rect) < ratio_thresh/*  && area / rect.area() > area_ratio_thresh */){
+
+        // double area = cv::contourArea(contour);
+        // cv::Rect rect = cv::boundingRect(contour);
+        // if(rect.area() > area_thresh && CalculateAspectRatio(rect) < ratio_thresh && area > area_ratio_thresh * rect.area()){
+        //     barriers_right.push_back(contour);
+        //     rects_right.push_back(rect);
+        // }
+
+        if (BarrierFileter(contour)){
             barriers_right.push_back(contour);
+            rects_right.push_back(cv::boundingRect(contour));
         }
     }
 
     // 显示轮廓，调试用
-    cv::Mat orange_left_color, orange_right_color;
-    cv::cvtColor(orange_left, orange_left_color, cv::COLOR_GRAY2BGR);
-    cv::cvtColor(orange_right, orange_right_color, cv::COLOR_GRAY2BGR);
+    
+    cv::drawContours(orange_left_color, contours_left, -1, cv::Scalar(0, 0, 255), 2);
     cv::drawContours(orange_left_color, barrriers_left, -1, cv::Scalar(0, 255, 0), 2);
     cv::drawContours(orange_right_color, barriers_right, -1, cv::Scalar(0, 255, 0), 2);
     for(const auto &contour : contours_left){
         // DrawRotatedRect(orange_left_color, contour);
         DrawRect(orange_left_color, contour);
+    }
+    for(const auto &rect : rects_right)
+    {
+        cv::rectangle(orange_right_color, rect, cv::Scalar(255, 0, 0), 2);
     }
     // 画出直线
     cv::Mat line_img_left = cv::Mat::zeros(orange_left.size(), CV_8UC3);
