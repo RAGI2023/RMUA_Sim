@@ -1,7 +1,9 @@
 #include "depth_calculate.hpp"
 #include "sensor_msgs/Image.h"
 #include <cmath>
+#include <cstddef>
 #include <functional>
+#include <iterator>
 #include <opencv2/calib3d.hpp>
 #include <opencv2/core.hpp>
 #include <opencv2/core/cvstd_wrapper.hpp>
@@ -12,6 +14,7 @@
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 #include <opencv4/opencv2/core/mat.hpp>
+#include <opencv4/opencv2/core/matx.hpp>
 #include <string>
 #include <utility>
 #include <vector>
@@ -59,24 +62,149 @@ DepthGenerator::DepthGenerator(const std::string &right_topic, const std::string
 
 void DepthGenerator::process_scene(cv::Mat &left_image, cv::Mat &right_image)
 {
+    // 纠正畸变
     cv::Mat rectified_left, rectified_right;
     stereoRectification(parameters_.cameraMatrix_l, parameters_.distCoeffs_l,
                         parameters_.cameraMatrix_r, parameters_.distCoeffs_r,
                         parameters_.R, parameters_.T,
                         left_image.size(), left_image, right_image,
                         rectified_left, rectified_right);
+    CalculateBarriers(rectified_left, rectified_right);
+    CalculateTrack(rectified_left, rectified_right);
     
+}
+
+void DepthGenerator::CalculateTrack(cv::Mat &left_image, cv::Mat &right_image)
+{
+    // 调试用，彩色图像
+    cv::Mat col_l, col_r;
+
+    cv::Mat orange_mask_l, orange_mask_r;
+    ExtractOrangeMask(left_image, orange_mask_l);
+    ExtractOrangeMask(right_image, orange_mask_r);
+    
+    cv::Mat gray_mask_l, gray_mask_r;
+    ExtractGrayMask(left_image, gray_mask_l);
+    ExtractGrayMask(right_image, gray_mask_r);
+
+    // const static cv::Mat kernel_erose = cv::Mat::ones(3, 3, CV_8U);
+    // cv::erode(gray_mask_l, gray_mask_l, kernel_erose);
+    // cv::erode(gray_mask_r, gray_mask_r, kernel_erose);
+
+    const static int kernel_open_size = 6;
+    const static cv::Mat kernel_open = cv::Mat::ones(kernel_open_size, kernel_open_size, CV_8U);
+    cv::morphologyEx(gray_mask_l, gray_mask_l, cv::MORPH_OPEN, kernel_open);
+    cv::morphologyEx(gray_mask_r, gray_mask_r, cv::MORPH_OPEN, kernel_open);
+    // cv::dilate(orange_mask_l, orange_mask_l, kernel_open);
+    // cv::dilate(orange_mask_r, orange_mask_r, kernel_open);
+
+    cv::cvtColor(gray_mask_l, col_l, cv::COLOR_GRAY2BGR);
+    cv::cvtColor(gray_mask_r, col_r, cv::COLOR_GRAY2BGR);
+    // cv::bitwise_and(left_image, gray_mask_l, col_l);
+    // cv::bitwise_and(right_image, gray_mask_r, col_r);
+
+    cv::Canny(orange_mask_l, orange_mask_l, 50, 150, 3);
+    cv::Canny(orange_mask_r, orange_mask_r, 50, 150, 3);
+
+    std::vector<std::vector<cv::Point>> contours_left, contours_right;
+    cv::findContours(gray_mask_l, contours_left, cv::RETR_LIST, cv::CHAIN_APPROX_SIMPLE);
+    cv::findContours(gray_mask_r, contours_right, cv::RETR_LIST, cv::CHAIN_APPROX_SIMPLE);
+
+    std::vector<std::vector<cv::Point>> contours_poly_left, contours_poly_right;
+    const static int area_thresh = 400;
+    const static int epsilon = 6; //epsilon越大拐点越少
+    for (const auto &contour : contours_left){
+        std::vector<cv::Point> poly;
+        cv::approxPolyDP(contour, poly, epsilon, true); 
+        if (cv::contourArea(poly) < area_thresh) {continue;}
+        contours_poly_left.push_back(poly);
+    }
+    for (const auto &contour : contours_right){
+        std::vector<cv::Point> poly;
+        cv::approxPolyDP(contour, poly, epsilon, true); 
+        if (cv::contourArea(poly) < area_thresh) {continue;}
+        contours_poly_right.push_back(poly);
+    }
+
+    cv::drawContours(col_l, contours_poly_left, -1, cv::Scalar(0, 255, 0), 2);
+    cv::drawContours(col_r, contours_poly_right, -1, cv::Scalar(0, 255, 0), 2);
+
+    // 霍夫直线检测
+    std::vector<cv::Vec4f> lines_left, lines_right;
+    const static double rho = 1;
+    const static double theta = CV_PI / 180;
+    const static int hf_threshold = 10;
+    const static int minLineLength = 10, maxLineGap = 25;
+    cv::HoughLinesP(orange_mask_l, lines_left, rho, theta, hf_threshold, minLineLength, maxLineGap); 
+    cv::HoughLinesP(orange_mask_r, lines_right, rho, theta, hf_threshold, minLineLength, maxLineGap);
+
+    std::vector<cv::Vec4f> filtered_lines_left, filtered_lines_right;
+    const static int y_thresh = 5;
+    for (const auto &contour : contours_poly_left){
+        // for (size_t i = 0; i < contour.size(); i++){
+        //     cv::circle(col_l, contour[i], 1, cv::Scalar(255, 0, 0),2);
+        // }
+        for(auto it = contour.begin(); it != contour.end(); it++){
+            cv::Point pt;
+            if (std::next(it) == contour.end()){
+                pt = *contour.begin();
+            }else {
+                pt = *std::next(it);
+            }
+            // 距离过近的点不进行计算
+            if(cv::norm(*it - pt) < 7){
+                continue;
+            }
+
+            for (const auto &line : lines_left){
+                if (std::fabs(line[1] - line[3]) < y_thresh){
+                    continue;
+                }
+                if (IsSameLine(*it, pt, line)){
+                    filtered_lines_left.push_back(line);
+                    break;
+                }
+            }
+        }
+    }
+
+    // cv::cvtColor(orange_mask_l, col_l, cv::COLOR_GRAY2BGR);
+    // cv::cvtColor(orange_mask_r, col_r, cv::COLOR_GRAY2BGR);
+    // for (const auto &line : lines_left){
+    //     cv::line(col_l, cv::Point(static_cast<int>(line[0]), static_cast<int>(line[1])), cv::Point(line[2], line[3]), cv::Scalar(0, 0, 255), 2);
+    // }
+    for (const auto &line : lines_right){
+        if (std::fabs(line[1] - line[3]) < y_thresh){
+            continue;
+        }
+        cv::line(col_r, cv::Point(static_cast<int>(line[0]), static_cast<int>(line[1])), cv::Point(line[2], line[3]), cv::Scalar(0, 0, 255), 2);
+    }
+
+    for (const auto &line : filtered_lines_left){
+        cv::line(col_l, cv::Point(static_cast<int>(line[0]), static_cast<int>(line[1])), cv::Point(line[2], line[3]), cv::Scalar(255, 0, 0), 4);
+    }
+
+    cv::Mat combined_img;
+    cv::cvtColor(orange_mask_r, orange_mask_r, cv::COLOR_GRAY2BGR);
+    cv::hconcat(col_l, orange_mask_r, combined_img);
+    cv::imshow("Track", combined_img);
+    cv::waitKey(10);
+}
+
+void DepthGenerator::CalculateBarriers(cv::Mat &left_image, cv::Mat &right_image)
+{
     // 提取橙红色区域
     cv::Mat orange_left, orange_right;
     // ExtractOrange(rectified_left, orange_left);
     // ExtractOrange(rectified_right, orange_right);
-    ExtractOrangeMask(rectified_left, orange_left);
-    ExtractOrangeMask(rectified_right, orange_right);
+    ExtractOrangeMask(left_image, orange_left);
+    ExtractOrangeMask(right_image, orange_right);
+
 
     // 去除噪点 闭操作
-    cv::Mat kernal = cv::Mat::ones(3, 3, CV_8U);
-    cv::morphologyEx(orange_left, orange_left, cv::MORPH_CLOSE, kernal);
-    cv::morphologyEx(orange_right, orange_right, cv::MORPH_CLOSE, kernal);
+    cv::Mat kernel = cv::Mat::ones(3, 3, CV_8U);
+    cv::morphologyEx(orange_left, orange_left, cv::MORPH_CLOSE, kernel);
+    cv::morphologyEx(orange_right, orange_right, cv::MORPH_CLOSE, kernel);
 
     cv::Mat kernerl_erose = cv::Mat::ones(3, 3, CV_8U);
     cv::erode(orange_left, orange_left, kernerl_erose);
@@ -84,17 +212,9 @@ void DepthGenerator::process_scene(cv::Mat &left_image, cv::Mat &right_image)
 
     // 提取直线， 赛道框
     // ROS_INFO("Lines detecting...");
-    std::vector<cv::Vec4f> lines_left, lines_right;
     cv::Mat edges_left, edges_right;
     cv::Canny(orange_left, edges_left, 50, 150, 3);
     cv::Canny(orange_right, edges_right, 50, 150, 3);
-    
-    double rho = 1;
-    double theta = CV_PI/180;
-    int hf_threshold = 50;
-    int minLineLength = 70, maxLineGap = 10;
-    cv::HoughLinesP(edges_left, lines_left, rho, theta, hf_threshold, minLineLength, maxLineGap); 
-    cv::HoughLinesP(edges_right, lines_right, rho, theta, hf_threshold, minLineLength, maxLineGap);
 
     // 膨胀，避免轮廓不闭合
     // cv::Mat kernel = cv::Mat::ones(4, 4, CV_8U);
@@ -185,22 +305,22 @@ void DepthGenerator::process_scene(cv::Mat &left_image, cv::Mat &right_image)
         }
     }
 
-    // 显示轮廓，调试用
-    
-    cv::drawContours(orange_left_color, contours_left, -1, cv::Scalar(0, 0, 255), 2);
-    cv::drawContours(orange_left_color, barrriers_left, -1, cv::Scalar(0, 255, 0), 2);
-    cv::drawContours(orange_right_color, barriers_right, -1, cv::Scalar(0, 255, 0), 2);
-    for(const auto &contour : contours_left){
-        // DrawRotatedRect(orange_left_color, contour);
-        DrawRect(orange_left_color, contour);
-    }
-    for(const auto &rect : rects_right)
-    {
-        cv::rectangle(orange_right_color, rect, cv::Scalar(255, 0, 0), 2);
-    }
-    // 画出直线
-    cv::Mat line_img_left = cv::Mat::zeros(orange_left.size(), CV_8UC3);
-    cv::Mat line_img_right = cv::Mat::zeros(orange_right.size(), CV_8UC3);
+    // // 显示轮廓，调试用
+    // cv::drawContours(orange_left_color, contours_left, -1, cv::Scalar(0, 0, 255), 2);
+    // cv::drawContours(orange_left_color, barrriers_left, -1, cv::Scalar(0, 255, 0), 2);
+    // cv::drawContours(orange_right_color, barriers_right, -1, cv::Scalar(0, 255, 0), 2);
+    // for(const auto &contour : contours_left){
+    //     // DrawRotatedRect(orange_left_color, contour);
+    //     DrawRect(orange_left_color, contour);
+    // }
+    // for(const auto &rect : rects_right)
+    // {
+    //     cv::rectangle(orange_right_color, rect, cv::Scalar(255, 0, 0), 2);
+    // }
+    // 画出匹配直线
+    // cv::Mat line_img_left = cv::Mat::zeros(orange_left.size(), CV_8UC3);
+    // cv::Mat line_img_right = cv::Mat::zeros(orange_right.size(), CV_8UC3);
+
     // for (size_t i = 0; i < lines_left.size(); i++){
     //     cv::Vec4f l = lines_left[i];
     //     cv::line(line_img_left, cv::Point(l[0], l[1]), cv::Point(l[2], l[3]), cv::Scalar(0, 0, 255), 3, cv::LINE_AA);
@@ -210,15 +330,15 @@ void DepthGenerator::process_scene(cv::Mat &left_image, cv::Mat &right_image)
     //     cv::line(line_img_right, cv::Point(l[0], l[1]), cv::Point(l[2], l[3]), cv::Scalar(0, 0, 255), 3, cv::LINE_AA);
     // }
     // 画出轮廓
-    for(const auto &contour : barrriers_left){
-        cv::drawContours(line_img_left, std::vector<std::vector<cv::Point>>{contour}, -1, cv::Scalar(0, 255, 0), 2);
-    }
-    for(const auto &contour : barriers_right){
-        cv::drawContours(line_img_right, std::vector<std::vector<cv::Point>>{contour}, -1, cv::Scalar(0, 255, 0), 2);
-    }
+    // for(const auto &contour : barrriers_left){
+    //     cv::drawContours(line_img_left, std::vector<std::vector<cv::Point>>{contour}, -1, cv::Scalar(0, 255, 0), 2);
+    // }
+    // for(const auto &contour : barriers_right){
+    //     cv::drawContours(line_img_right, std::vector<std::vector<cv::Point>>{contour}, -1, cv::Scalar(0, 255, 0), 2);
+    // }
     
-    cv::Mat combined_img;
-    cv::hconcat(orange_left_color, orange_right_color, combined_img);
+    // cv::Mat combined_img;
+    // cv::hconcat(mfl_color_left, mfl_color_right, combined_img);
     std::vector<cv::Point2f> left_points, right_points;
     for (const auto &contour : barrriers_left){
         cv::Point2f centroid = CalculateCentroid(contour);
@@ -229,34 +349,20 @@ void DepthGenerator::process_scene(cv::Mat &left_image, cv::Mat &right_image)
         right_points.push_back(centroid);
     }
     std::vector<std::pair<int , int >> correspondences = FindContourCorrespondence(barrriers_left, barriers_right);
-    for (const auto &correspondence : correspondences){
-        cv::Point2f right_tmp = right_points[correspondence.second];
-        right_tmp.x += line_img_left.cols;
-        cv::line(combined_img, left_points[correspondence.first], right_tmp, cv::Scalar(0, 0, 255), 1);
-    }
+    // 显示对应关系
+    // for (const auto &correspondence : correspondences){
+    //     cv::Point2f right_tmp = right_points[correspondence.second];
+    //     right_tmp.x += line_img_left.cols;
+    //     cv::line(combined_img, left_points[correspondence.first], right_tmp, cv::Scalar(0, 0, 255), 1);
+    // }
+    // cv::Mat mask_combined;
+    // cv::hconcat(edges_left, edges_right, mask_combined);
+    // cv::imshow("edges", mask_combined);
     
-    cv::imshow("rectified", combined_img);
-    cv::waitKey(10);
+    // cv::imshow("rectified", combined_img);
+    // cv::waitKey(10);
 
 
-}
-
-void DepthGenerator::ExtractOrangeMask(cv::Mat &img, cv::Mat &mask)
-{
-    cv::Mat hsv;
-    cv::cvtColor(img, hsv, cv::COLOR_BGR2HSV);
-    cv::Scalar low_bound(0, 50, 50);
-    cv::Scalar high_bound(15, 255, 255);
-    cv::inRange(hsv, low_bound, high_bound, mask);
-}
-
-void DepthGenerator::ExtractOrange(cv::Mat &img, cv::Mat &Output)
-{
-    cv::Mat mask;
-    ExtractOrangeMask(img, mask);
-    cv::Mat output;
-    cv::cvtColor(img, Output, cv::COLOR_BGR2GRAY);
-    Output = mask & Output;
 }
 
 void DepthGenerator::stereoRectification(const cv::Mat& cameraMatrix_l, const cv::Mat& distCoeffs_l,

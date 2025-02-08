@@ -2,6 +2,9 @@
 
 #include "ros/console.h"
 #include "ros/node_handle.h"
+#include <algorithm>
+#include <cstdint>
+#include <cstdlib>
 #include <ctime>
 #include <exception>
 #include <memory>
@@ -30,7 +33,6 @@ public:
     CameraParameter(const std::string &file_path) : file_path_(file_path) {};
     CameraParameter(const CameraParameter &other) : file_path_(other.file_path_), cameraMatrix_l(other.cameraMatrix_l), cameraMatrix_r(other.cameraMatrix_r), 
         distCoeffs_l(other.distCoeffs_l), R(other.R), T(other.T) {};
-    ~CameraParameter() {};
 
     bool readParameters()
     {
@@ -87,7 +89,9 @@ private:
 
     //处理场景
     void process_scene(cv::Mat &left_image, cv::Mat &right_image); 
-    
+    void CalculateBarriers(cv::Mat &left_image, cv::Mat &right_image);
+    void CalculateTrack(cv::Mat &left_image, cv::Mat &right_image);
+
     void callback_imu(const sensor_msgs::Imu::ConstPtr& msg)
     {
         timestamp_ = msg->header.stamp.toSec() + msg->header.stamp.toNSec() * 1e-9;
@@ -120,8 +124,23 @@ private:
                          const cv::Size& img_size, const cv::Mat& img_l, const cv::Mat& img_r,
                          cv::Mat& rectified_img_l, cv::Mat& rectified_img_r);
 
-    void ExtractOrangeMask(cv::Mat &img, cv::Mat &mask);
-    void ExtractOrange(cv::Mat &img, cv::Mat &Output);
+    void ExtractOrangeMask(cv::Mat &img, cv::Mat &mask)
+    {
+        cv::Mat hsv;
+        cv::cvtColor(img, hsv, cv::COLOR_BGR2HSV);
+        const static cv::Scalar low_bound(0, 50, 50);
+        const static cv::Scalar high_bound(15, 255, 255);
+        cv::inRange(hsv, low_bound, high_bound, mask);
+    }
+
+    void ExtractGrayMask(cv::Mat &img, cv::Mat &mask)
+    {
+        cv::Mat hsv;
+        cv::cvtColor(img, hsv, cv::COLOR_BGR2HSV);
+        const static cv::Scalar low_bound(95, 40, 140);
+        const static cv::Scalar high_bound(101, 85, 232);
+        cv::inRange(hsv, low_bound, high_bound, mask);
+    }
 
     // 计算轮廓的长宽比 高/宽
     double CalculateAspectRatio(const std::vector<cv::Point> &countour)
@@ -166,6 +185,54 @@ private:
             return true;
         }
         return false;
+    }
+
+    double LineLengh(const cv::Vec4f &line)
+    {
+        return cv::norm(cv::Point((int)line[0], (int)line[1]) - cv::Point((int)line[2], (int)line[3]));
+    }
+
+    double LineLengh(const cv::Point &pt1, const cv::Point &pt2)
+    {
+        return cv::norm(pt1 - pt2);
+    }
+
+    bool IsSameLine(const cv::Point &line1_pt1, const cv::Point &line1_pt2, const cv::Point &line2_pt1, const cv::Point &line2_pt2)
+    {
+        // const static double angle2line_thresh = 10;
+        // const static double anglerect_thresh = 30;
+        const static double width_thresh = 20;
+        const static double overlap_thresh = 8;
+        // double angle1 = std::atan2(line1_pt2.y - line1_pt1.y, line1_pt2.x - line1_pt1.x) * 180 / CV_PI;
+        // angle1 = angle1 > 0 ? angle1 : angle1 + 180;
+        // double angle2 = std::atan2(line2_pt2.y - line2_pt1.y, line2_pt2.x - line2_pt1.x) * 180 / CV_PI;
+        // angle2 = angle2 > 0 ? angle2 : angle2 + 180;
+        // if (std::abs(angle1 - angle2) > angle2line_thresh){
+        //     return false;
+        // }
+        // double angle2line = (angle1 + angle2) / 2;
+        std::vector<cv::Point> pts{line1_pt1, line1_pt2, line2_pt1, line2_pt2};
+        cv::RotatedRect rect = cv::minAreaRect(pts);
+        double rect_angle = rect.angle + 180;
+        // bool angle_flag = std::abs() std::abs(angle2line - rect_angle) < anglerect_thresh && 
+    
+        return rect.size.height < width_thresh 
+            && LineLengh(line1_pt1, line1_pt2) + LineLengh(line2_pt1, line2_pt2) - rect.size.width > overlap_thresh
+            ;
+    }
+
+    bool IsSameLine(const cv::Point &line1_pt1, const cv::Point &line1_pt2, const cv::Vec4f &line2)
+    {
+        return IsSameLine(line1_pt1, line1_pt2, 
+            cv::Point(static_cast<int>(line2[0]), static_cast<int>(line2[1])), cv::Point(static_cast<int>(line2[2]), static_cast<int>(line2[3])));
+    }
+
+    float Point2LineDist(const cv::Point &pt, const cv::Vec4f &line)
+    {
+        float x0 = pt.x, y0 = pt.y;
+        float x1 = line[0], y1 = line[1];
+        float x2 = line[2], y2 = line[3];
+        return std::abs((y2 - y1) * x0 - (x2 - x1) * y0 + x2 * y1 - y2 * x1) / std::sqrt((y2 - y1) * (y2 - y1) + (x2 - x1) * (x2 - x1));
     }
 
     void DrawRect(cv::Mat &image, const std::vector<cv::Point> &contour, cv::Scalar color = cv::Scalar(255, 0, 0), int thickness = 2)
