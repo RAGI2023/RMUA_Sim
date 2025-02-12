@@ -8,44 +8,45 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
-set(cv_bridge_DIR /usr/local/share/cv_bridge/cmake)
-set(pcl_conversions_DIR /usr/local/share/pcl_conversions/cmake)
-set(pcl_ros_DIR /usr/local/share/pcl_ros/cmake)
+
+# set(cv_bridge_DIR /usr/local/share/cv_bridge/cmake)
+# set(pcl_conversions_DIR /usr/local/share/pcl_conversions/cmake)
+# set(pcl_ros_DIR /usr/local/share/pcl_ros/cmake)
 find_package(catkin REQUIRED COMPONENTS
-airsim_ros
-message_generation
-nav_msgs
-roscpp
-rospy
-sensor_msgs
-std_msgs
-geographic_msgs
-geometry_msgs
-std_srvs
-tf2
-tf2_ros
-tf2_sensor_msgs
-tf2_geometry_msgs
-image_transport
-cv_bridge
-pcl_conversions
-pcl_ros
+# airsim_ros
+# message_generation
+# nav_msgs
+# roscpp
+# rospy
+# sensor_msgs
+# std_msgs
+# geographic_msgs
+# geometry_msgs
+# std_srvs
+# tf2
+# tf2_ros
+# tf2_sensor_msgs
+# tf2_geometry_msgs
+# image_transport
+# cv_bridge
+# pcl_conversions
+# pcl_ros
 )
 
-find_package(OpenCV 4.10.0 EXACT)
-find_package(g2o REQUIRED)
+# find_package(OpenCV 4.10.0 EXACT)
+# find_package(g2o REQUIRED)
 
-catkin_package(
-  CATKIN_DEPENDS message_runtime roscpp std_msgs
-)
+# catkin_package(
+#   CATKIN_DEPENDS message_runtime roscpp std_msgs
+# )
 
-set(UTILS_PATH ${PROJECT_SOURCE_DIR}/../utils)
+# set(UTILS_PATH ${PROJECT_SOURCE_DIR}/../utils)
 
-include_directories(include ${catkin_INCLUDE_DIRS} ${OpenCV_INCLUDE_DIRS} ${UTILS_PATH} ${G2O_INCLUDE_DIRS})
+# include_directories(include ${catkin_INCLUDE_DIRS} ${OpenCV_INCLUDE_DIRS} ${UTILS_PATH} ${G2O_INCLUDE_DIRS})
 
-add_library(map_manager src/mapmanager.cpp src/keyframe.cpp)
+# add_library(map_manager src/mapmanager.cpp src/keyframe.cpp)
 
-add_executable(odometry src/odometry.cpp)
-target_link_libraries(odometry
-  map_manager g2o::core g2o::solver_cholmod g2o::types_sba
-  ${catkin_LIBRARIES} ${OpenCV_LIBRARIES})
+# add_executable(odometry src/odometry.cpp)
+# target_link_libraries(odometry
+#   map_manager g2o::core g2o::solver_cholmod g2o::types_sba
+#   ${catkin_LIBRARIES} ${OpenCV_LIBRARIES})

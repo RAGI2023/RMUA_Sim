@@ -9,7 +9,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
-set(cv_bridge_DIR /usr/local/share/cv_bridge/cmake)
+# set(cv_bridge_DIR /usr/local/share/cv_bridge/cmake)
 set(pcl_conversions_DIR /usr/local/share/pcl_conversions/cmake)
 set(pcl_ros_DIR /usr/local/share/pcl_ros/cmake)
 find_package(catkin REQUIRED COMPONENTS
@@ -34,7 +34,7 @@ pcl_conversions
 pcl_ros
 )
 
-find_package(OpenCV 4.10.0 EXACT)
+find_package(OpenCV)
 
 catkin_package(
   CATKIN_DEPENDS message_runtime roscpp std_msgs

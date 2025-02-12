@@ -8,11 +8,14 @@ USER root
 
 RUN apt update && apt install -y python3-catkin-tools ros-noetic-geographic-msgs \
  ros-noetic-tf2-sensor-msgs ros-noetic-tf2-geometry-msgs ros-noetic-image-transport \
- net-tools python3-pip
+ net-tools python3-pip \
+ libopencv-dev python3-opencv
+
+
 
 ENV ROS_DISTRO noetic
 
-COPY requirements.txt .
+WORKDIR /basic_dev/src/yolov5_ros/src/yolov5
 RUN pip3 install --no-cache-dir -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple
 
 WORKDIR /basic_dev/
