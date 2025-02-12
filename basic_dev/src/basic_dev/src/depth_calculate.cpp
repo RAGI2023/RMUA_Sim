@@ -28,12 +28,9 @@ int main(int argc, char **argv)
     if (!pr.readParameters()){
         return -1;
     }
-    
-    // VideoPlayer right_player("airsim_node/drone_1/front_right/Scene", "right");
-    // VideoPlayer left_player("airsim_node/drone_1/front_left/Scene", "left");
 
-    DepthGenerator dg("/airsim_node/drone_1/front_right/Scene", "/airsim_node/drone_1/front_left/Scene", 
-        "/depth_image", pr);
+    // DepthGenerator dg("/airsim_node/drone_1/front_right/Scene", "/airsim_node/drone_1/front_left/Scene", 
+    //     "/depth_image", pr);
     
     ros::spin();
     
@@ -184,9 +181,11 @@ void DepthGenerator::CalculateTrack(cv::Mat &left_image, cv::Mat &right_image)
         cv::line(col_l, cv::Point(static_cast<int>(line[0]), static_cast<int>(line[1])), cv::Point(line[2], line[3]), cv::Scalar(255, 0, 0), 4);
     }
 
+    cv::circle(col_r, cv::Point(687, 466), 1, cv::Scalar(255, 0, 0), 2);
+    // ROS_INFO("HSV: %d %d %d", )
     cv::Mat combined_img;
-    cv::cvtColor(orange_mask_r, orange_mask_r, cv::COLOR_GRAY2BGR);
-    cv::hconcat(col_l, orange_mask_r, combined_img);
+    // cv::cvtColor(orange_mask_r, orange_mask_r, cv::COLOR_GRAY2BGR);
+    cv::hconcat(col_l, col_r, combined_img);
     cv::imshow("Track", combined_img);
     cv::waitKey(10);
 }

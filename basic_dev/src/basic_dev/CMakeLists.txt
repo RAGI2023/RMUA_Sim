@@ -45,6 +45,9 @@ include_directories(include ${catkin_INCLUDE_DIRS}  ${OpenCv_INCLUDE_DIRS})
 add_executable(keyboard_ctrl src/keyboard_ctrl.cpp)
 target_link_libraries(keyboard_ctrl ${catkin_LIBRARIES} ${OpenCv_LIBS})
 
+add_executable(video_player src/video_player.cpp)
+target_link_libraries(video_player ${catkin_LIBRARIES} ${OpenCv_LIBS})
+
 add_executable(basic_dev src/basic_dev.cpp )
 target_link_libraries(basic_dev ${catkin_LIBRARIES} ${OpenCv_LIBS})
 

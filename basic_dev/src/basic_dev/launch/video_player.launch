@@ -1,0 +1,11 @@
+<launch>
+    <!-- 定义参数 -->
+    <param name="topic" value="airsim_node/drone_1/back_right/Scene" />
+    <param name="file_path" value="dataset/images/val/" />
+    <param name="index" value="0" />
+
+    <!-- 启动节点 -->
+    <node name="video_player_node" pkg="basic_dev" type="video_player" output="screen">
+        <!-- 这里可以添加额外的参数配置 -->
+    </node>
+</launch>

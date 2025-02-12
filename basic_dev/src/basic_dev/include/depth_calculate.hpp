@@ -137,9 +137,11 @@ private:
     {
         cv::Mat hsv;
         cv::cvtColor(img, hsv, cv::COLOR_BGR2HSV);
-        const static cv::Scalar low_bound(95, 40, 140);
-        const static cv::Scalar high_bound(101, 85, 232);
+        const static cv::Scalar low_bound(40, 40, 90);
+        // const static cv::Scalar low_bound(95, 40, 90);
+        const static cv::Scalar high_bound(105, 125, 232);
         cv::inRange(hsv, low_bound, high_bound, mask);
+        // ROS_INFO("HSV: %d %d %d", hsv.at<cv::Vec3b>(687, 466)[0], hsv.at<cv::Vec3b>(687, 466)[1], hsv.at<cv::Vec3b>(687, 466)[2]);
     }
 
     // 计算轮廓的长宽比 高/宽
@@ -201,8 +203,8 @@ private:
     {
         // const static double angle2line_thresh = 10;
         // const static double anglerect_thresh = 30;
-        const static double width_thresh = 20;
-        const static double overlap_thresh = 8;
+        const static double width_ratiao = 4;
+        const static double overlap_thresh = 4;
         // double angle1 = std::atan2(line1_pt2.y - line1_pt1.y, line1_pt2.x - line1_pt1.x) * 180 / CV_PI;
         // angle1 = angle1 > 0 ? angle1 : angle1 + 180;
         // double angle2 = std::atan2(line2_pt2.y - line2_pt1.y, line2_pt2.x - line2_pt1.x) * 180 / CV_PI;
@@ -216,7 +218,7 @@ private:
         double rect_angle = rect.angle + 180;
         // bool angle_flag = std::abs() std::abs(angle2line - rect_angle) < anglerect_thresh && 
     
-        return rect.size.height < width_thresh 
+        return rect.size.width / rect.size.height > width_ratiao 
             && LineLengh(line1_pt1, line1_pt2) + LineLengh(line2_pt1, line2_pt2) - rect.size.width > overlap_thresh
             ;
     }
@@ -314,6 +316,23 @@ public:
     {
         sub_video_ = nh_.subscribe<sensor_msgs::Image>(video_topic, 1, 
             std::bind(&VideoPlayer::callback_video, this, std::placeholders::_1));
+        file_index_ = 0;
+    }
+    void SetFilePath(const std::string &file_path)
+    {
+        file_path_ = file_path;
+        if(file_path_.back() != '/'){
+            file_path_ += "/";
+        }
+
+    }
+    void set_index(int index)
+    {
+        file_index_ = index;
+    }
+    int get_index()
+    {
+        return file_index_;
     }
 private:
     ros::NodeHandle nh_;
@@ -321,6 +340,8 @@ private:
     cv::Mat frame_;
     cv_bridge::CvImageConstPtr last_video_;
     std::string window_name_;
+    std::string file_path_;
+    int file_index_;
     int delay_;
     void callback_video(const sensor_msgs::ImageConstPtr &msg)
     {
@@ -328,11 +349,15 @@ private:
         if(!last_video_->image.empty())
         {
             cv:: Mat image_ = last_video_->image;
-            std::string time = std::to_string(msg->header.stamp.sec + msg->header.stamp.toNSec() * 1e-9);
-            cv::putText(image_, time, cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 1.0, cv::Scalar(255, 255, 255), 2);
+            // std::string time = std::to_string(msg->header.stamp.sec + msg->header.stamp.toNSec() * 1e-9);
+            // cv::putText(image_, time, cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 1.0, cv::Scalar(255, 255, 255), 2);
             ROS_INFO("%s get video frame.: %f", window_name_.c_str(), msg->header.stamp.sec + msg->header.stamp.nsec*1e-9);
             cv::imshow(window_name_, image_);
-            cv::waitKey(delay_);
+            if (cv::waitKey(delay_) == 's'){
+                std::string file_name = file_path_ + std::to_string(file_index_++) + ".jpg";
+                cv::imwrite(file_name, image_);
+                ROS_INFO("Save image to %s", file_name.c_str());
+            }
         }else {
             ROS_WARN("Video frame is empty.");
         }
