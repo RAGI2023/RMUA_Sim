@@ -20,7 +20,7 @@ WORKDIR /basic_dev/
 ADD src /basic_dev/src/
 RUN . /opt/ros/${ROS_DISTRO}/setup.sh && catkin_make --only-pkg-with-deps airsim_ros  \
 && . devel/setup.sh \
-&& catkin_make --only-pkg-with-deps basic_dev controller detection_msgs imu_gps_odometry yolov5_ros
+&& catkin_make --only-pkg-with-deps basic_dev controller_test detection_msgs imu_gps_odometry yolov5_ros
 
 ADD src/yolov5_ros/src/yolov5/best.pt /basic_dev/src/yolov5_ros/src/yolov5/
 ADD setup.bash /

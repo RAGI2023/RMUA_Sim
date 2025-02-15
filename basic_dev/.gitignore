@@ -3,3 +3,4 @@ devel/
 build/
 .cache
 test.jpg
+*.tar
