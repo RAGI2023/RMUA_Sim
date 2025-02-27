@@ -17,6 +17,7 @@ find_package(catkin REQUIRED COMPONENTS
 airsim_ros
 message_generation
 nav_msgs
+detection_msgs
 # nodelet
 roscpp
 rospy
@@ -43,11 +44,23 @@ catkin_package(
 
 include_directories(include ${catkin_INCLUDE_DIRS}  ${OpenCv_INCLUDE_DIRS})
 
+add_executable(occupancyGrid src/occupancyGrid.cpp)
+target_link_libraries(occupancyGrid ${catkin_LIBRARIES} ${OpenCv_LIBS})
+
+add_executable(pathproc src/pathProcess.cpp)
+target_link_libraries(pathproc ${catkin_LIBRARIES} ${OpenCv_LIBS})
+
 add_executable(keyboard_ctrl src/keyboard_ctrl.cpp)
 target_link_libraries(keyboard_ctrl ${catkin_LIBRARIES} ${OpenCv_LIBS})
 
-add_executable(video_player src/video_player.cpp)
-target_link_libraries(video_player ${catkin_LIBRARIES} ${OpenCv_LIBS})
+add_executable(DetectionProcess src/DetectionProcess.cpp)
+target_link_libraries(DetectionProcess ${catkin_LIBRARIES} ${OpenCv_LIBS})
+
+add_executable(navy src/navy.cpp)
+target_link_libraries(navy ${catkin_LIBRARIES} ${OpenCv_LIBS})
+
+# add_executable(video_player src/video_player.cpp)
+# target_link_libraries(video_player ${catkin_LIBRARIES} ${OpenCv_LIBS})
 
 # add_executable(basic_dev src/basic_dev.cpp )
 # target_link_libraries(basic_dev ${catkin_LIBRARIES} ${OpenCv_LIBS})

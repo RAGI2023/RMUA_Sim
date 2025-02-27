@@ -71,6 +71,8 @@ add_message_files(
   PoseCmd.msg
   RotorPWM.msg
   Scene.msg
+  Barrier.msg
+  Barriers.msg
 )
 
 add_service_files(
