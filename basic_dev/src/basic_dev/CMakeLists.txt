@@ -17,7 +17,6 @@ find_package(catkin REQUIRED COMPONENTS
 airsim_ros
 message_generation
 nav_msgs
-detection_msgs
 # nodelet
 roscpp
 rospy
@@ -25,6 +24,8 @@ sensor_msgs
 std_msgs
 geographic_msgs
 geometry_msgs
+octomap_msgs
+octomap_server
 std_srvs
 tf2
 tf2_ros
@@ -33,28 +34,30 @@ tf2_geometry_msgs
 image_transport
 OpenCV
 cv_bridge
-# pcl_ros
-# pcl_conversions
+pcl_ros
+pcl_conversions
 )
+
+find_package(octomap REQUIRED)
 
 catkin_package(
   INCLUDE_DIRS include
   CATKIN_DEPENDS message_runtime roscpp std_msgs # nodelet 
 )
 
-include_directories(include ${catkin_INCLUDE_DIRS}  ${OpenCv_INCLUDE_DIRS})
+include_directories(include ${catkin_INCLUDE_DIRS}  ${OpenCv_INCLUDE_DIRS} ${OCTOMAP_INCLUDE_DIRS})
 
 add_executable(occupancyGrid src/occupancyGrid.cpp)
-target_link_libraries(occupancyGrid ${catkin_LIBRARIES} ${OpenCv_LIBS})
+target_link_libraries(occupancyGrid ${catkin_LIBRARIES} ${OpenCv_LIBS} ${OCTOMAP_LIBRARIES})
+
+add_executable(PathReader src/PathReader.cpp)
+target_link_libraries(PathReader ${catkin_LIBRARIES})
 
 add_executable(pathproc src/pathProcess.cpp)
 target_link_libraries(pathproc ${catkin_LIBRARIES} ${OpenCv_LIBS})
 
 add_executable(keyboard_ctrl src/keyboard_ctrl.cpp)
 target_link_libraries(keyboard_ctrl ${catkin_LIBRARIES} ${OpenCv_LIBS})
-
-add_executable(DetectionProcess src/DetectionProcess.cpp)
-target_link_libraries(DetectionProcess ${catkin_LIBRARIES} ${OpenCv_LIBS})
 
 add_executable(navy src/navy.cpp)
 target_link_libraries(navy ${catkin_LIBRARIES} ${OpenCv_LIBS})
